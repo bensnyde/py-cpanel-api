@@ -9,41 +9,55 @@
     @website    http://bensnyde.me
     @email      benton@bensnyde.me
     @created    7/24/13
-    @updated    5/1/15
+    @updated    5/17/16
 """
-from httplib import HTTPSConnection
-from base64 import b64encode
+import base64
+import httplib
+import urllib
+import json
+
 
 class Cpanel:
-    def __init__(self, url, username, password):
-        self.url = url
-        self.authHeader = {'Authorization':'Basic ' + b64encode(username+':'+password).decode('ascii')}
+    def __init__(self, base_url, username, password):
+        self.base_url = base_url
+        self.headers = {'Authorization':'Basic ' + base64.b64encode(username+':'+password).decode('ascii')}
 
-    def __cQuery(self, queryStr):
-        """Query WHM
-
-                Queries specified WHM Server's JSON API.
+    def __cQuery(self, resource, kwargs={}):
+        """Query WHM API
 
         Parameters
-            queryStr:str - HTTP GET formatted query string.
+            resource: str api resource uri
+            kwargs: dict args
         Returns
-            JSON response from server
+            JSON response
         """
-        conn = HTTPSConnection(self.url, 2087)
-        conn.request('GET', '/json-api/'+queryStr, headers=self.authHeader)
-        response = conn.getresponse()
-        data = response.read()
-        conn.close()
-        return data
+        try:
+            kwargs['api.version'] = 1
 
-    def createAccount(self, username, domain, *args):
+            conn = httplib.HTTPSConnection(self.base_url, 2087)
+            conn.request('GET', '/json-api/%s?%s' % (resource, urllib.urlencode(kwargs)), headers=self.headers)
+            response = conn.getresponse()
+            data = json.loads(response.read())
+            conn.close()
+            return data
+        except httplib.HTTPException as ex:
+            logging.critical("HTTPException from Cpanel API: %s" % ex)
+        except ValueError as ex:
+            logging.critical("Unexpected response from querying Cpanel API: %s" % ex)
+        except Exception as ex:
+            logging.critical("Unhandled Exception while querying Cpanel API: %s" % ex)
+
+    def createAccount(self, username, domain, kwargs):
         """Create Cpanel Account
 
             This function creates a hosting account and sets up its associated domain information.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+createacct
         """
-        return self.__cQuery('createacct?username='+username+'&domain='+domain)
+        kwargs['username'] = username
+        kwargs['domain'] = domain
+
+        return self.__cQuery('createacct', kwargs)
 
     def changeAccountPassword(self, username, password, update_db_password=True):
         """Set Cpanel Account Password
@@ -52,7 +66,11 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+passwd
         """
-        return self.__cQuery('passwd?user='+username+'&pass='+password+'&db_pass_update='+update_db_password)
+        return self.__cQuery('passwd', {
+            'user': username,
+            'pass': password,
+            'db_pass_update': update_db_password
+        })
 
     def limitAccountBandwidth(self, username, bwlimit):
         """Set Cpanel Account Bandwidth Limit
@@ -61,25 +79,29 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+limitbw
         """
-        return self.__cQuery('limitbw?user='+username+'&bwlimit='+bwlimit)
+        return self.__cQuery('limitbw', {
+            'user': username,
+            'bwlimit': bwlimit
+        })
 
-    def listAccounts(self, *args):
+    def listAccounts(self, kwargs={}):
         """List Cpanel Accounts
 
             This function lists all accounts on the server, and also allows you to search for a specific account or set of accounts.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+listaccts
         """
-        return self.__cQuery('lictaccts')
+        return self.__cQuery('listaccts', kwargs)
 
-    def modifyAccount(self, username, *args):
+    def modifyAccount(self, username, kwargs={}):
         """Edit Cpanel Account
 
             This function modifies settings for an account.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+modifyacct
         """
-        return self.__cQuery('modifyacct?user='+username)
+        kwargs['user'] = username
+        return self.__cQuery('modifyacct', kwargs)
 
     def changeAccountDiskQuota(self, username, quota):
         """Set Cpanel Account Disk Quota
@@ -88,7 +110,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+editquota
         """
-        return self.__cQuery('editquota?user='+username+'&quota='+quota)
+        return self.__cQuery('editquota', {
+            'user': username,
+            'quota': quota
+        })
 
     def getAccountSummary(self, username):
         """Get Cpanel Account Summary
@@ -97,7 +122,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+accountsummary
         """
-        return self.__cQuery('accountsummary?user='+username)
+        return self.__cQuery('accountsummary', {
+            'user': username
+        })
 
     def suspendAccount(self, username, reason=""):
         """Suspend Cpanel Account
@@ -106,7 +133,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+suspendacct
         """
-        return self.__cQuery('suspendacct?user='+username+'&reason='+reason)
+        return self.__cQuery('suspendacct', {
+            'user': username,
+            'reason': reason
+        })
 
     def listSuspendedAccounts(self):
         """List Suspended Cpanel Accounts
@@ -124,7 +154,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+removeacct
         """
-        return self.__cQuery('removeacct?user='+username+'&keepdns='+keep_dns)
+        return self.__cQuery('removeacct', {
+            'user': username,
+            'keepdns': keep_dns
+        })
 
     def unsuspendAccount(self, username):
         """Unsuspend Cpanel Account
@@ -133,7 +166,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+unsuspendacct
         """
-        return self.__cQuery('unsuspendacct?user='+username)
+        return self.__cQuery('unsuspendacct', {
+            'user': username
+        })
 
     def changeAccountPackage(self, username, package):
         """Change Cpanel Account Package
@@ -142,7 +177,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+changepackage
         """
-        return self.__cQuery('changepackage?user='+username+'&pkg='+package)
+        return self.__cQuery('changepackage', {
+            'user': username,
+            'pkg': package
+        })
 
     def getDomainUserdata(self, domain):
         """Get User Data By Domain
@@ -151,7 +189,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+domainuserdata
         """
-        return self.__cQuery('domainuserdata?domain='+domain)
+        return self.__cQuery('domainuserdata', {
+            'domain': domain
+        })
 
     def changeDomainIpAddress(self, domain, ip_address):
         """Set Domain's IP Address
@@ -160,7 +200,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setsiteip
         """
-        return self.__cQuery('setsiteip?domain='+domain+'&ip='+ip_address)
+        return self.__cQuery('setsiteip', {
+            'domain': domain,
+            'ip=': ip_address
+        })
 
     def changeAccountIpAddress(self, username, ip_address):
         """Set Cpanel Account IP Address
@@ -169,7 +212,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setsiteip
         """
-        return self.__cQuery('setsiteip?user='+username+'&ip='+ip_address)
+        return self.__cQuery('setsiteip', {
+            'user': username,
+            'ip': ip_address
+        })
 
     def restoreAccountBackup(self, username, backup_type="daily", all_services=True, ip=True, mail=True, mysql=True, subs=True):
         """Restore Cpanel Account From Backup
@@ -179,9 +225,13 @@ class Cpanel:
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+restoreaccount
         """
         if backup_type not in ["daily", "weekly", "monthly"]:
-                raise Exception("Invalid backup_type.")
+            raise Exception("Invalid backup_type.")
 
-        return self.__cQuery('restoreaccount?api.version=1&user='+username+'&type='+backup_type+'&all='+all_services)
+        return self.__cQuery('restoreaccount', {
+            'user': username,
+            'type': backup_type,
+            'all': all_services
+        })
 
     def setAccountDigestAuthentication(self, username, password, enable_digest=True):
         """Toggle Cpanel Account's Digest Authentication
@@ -190,7 +240,11 @@ class Cpanel:
 
                 http://docs.cpanel.net/twiki/bin/view/SoftwareDevelopmentKit/SetDigestAuth -
         """
-        return self.__cQuery('set_digest_auth?user='+username+'&password='+password+'&enabledigest='+enable_digest+'&api.version=1')
+        return self.__cQuery('set_digest_auth', {
+            'user': username,
+            'password': password,
+            'enabledigest': enable_digest
+        })
 
     def getAccountDigestAuthentication(self, username):
         """Get Cpanel Account's Digest Authentication
@@ -199,7 +253,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+set_digest_auth
         """
-        return self.__cQuery('has_digest_auth?user='+username)
+        return self.__cQuery('has_digest_auth', {
+            'user': username
+        })
 
 
     def getPrivileges(self):
@@ -218,8 +274,14 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+restore_queue_add_task
         """
-        return self.__cQuery('restore_queue_add_task?user='+username+'&restore_point='+restore_point
-                +'&give_ip='+give_ip+'&mysql='+mysql+'&subdomains='+subdomains+'&mail_config='+mail_config)
+        return self.__cQuery('restore_queue_add_task', {
+            'user': username,
+            'restore_point': restore_point,
+            'give_ip': give_ip,
+            'mysql': mysql,
+            'subdomains': subdomains,
+            'mail_config': mail_config
+        })
 
     def activateRestoreQueue(self):
         """Activate Restore Job Queue
@@ -264,7 +326,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+restore_queue_clear_pending_task
         """
-        return self.__cQuery('restore_queue_clear_pending_task?user='+username)
+        return self.__cQuery('restore_queue_clear_pending_task', {
+            'user': username
+        })
 
     def clearRestoreQueuePendingTasks(self):
         """Clear All Pending Jobs From Restore Queue
@@ -283,7 +347,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+restore_queue_clear_completed_task
         """
-        return self.__cQuery('restore_queue_clear_completed_task?user='+username)
+        return self.__cQuery('restore_queue_clear_completed_task', {
+            'user': username
+        })
 
     def clearRestoreQueueCompletedTasks(self):
         """Clear All Completed Jobs From Restore Queue
@@ -337,7 +403,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+backup_skip_users_all
         """
-        return self.__cQuery('backup_skip_users_all?state='+state)
+        return self.__cQuery('backup_skip_users_all', {
+            'state': state
+        })
 
     def getBackupConfigAllUsers(self):
         """Get Backup Config For All Users
@@ -374,7 +442,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+backup_user_list
         """
-        return self.__cQuery('backup_user_list?restore_point='+date)
+        return self.__cQuery('backup_user_list', {
+            'restore_point': date
+        })
 
     def validateBackupDestination(self, destination_id, disable_on_fail=False):
         """Validate Backup Destination
@@ -383,9 +453,12 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+backup_destination_validate
         """
-        return self.__cQuery('backup_destination_validate?id='+destination_id+'&disableonfail='+disable_on_fail)
+        return self.__cQuery('backup_destination_validate', {
+            'id': destination_id,
+            'disableonfail': disable_on_fail
+        })
 
-    def addBackupDestination(self, backup_type, *args):
+    def addBackupDestination(self, backup_type, kwargs):
         """Add Backup Destination
 
             This function allows you to create a backup destination and save it to a config file.
@@ -393,18 +466,20 @@ class Cpanel:
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+backup_destination_add
         """
         if backup_type not in ["FTP", "Local", "SFTP", "WebDav", "Custom"]:
-                raise Exception("Invalid backup_type")
+            raise Exception("Invalid backup_type")
 
-        return self.__cQuery('backup_destination_add?type='+backup_type)
+        kwargs['type'] = backup_type
+        return self.__cQuery('backup_destination_add', kwargs)
 
-    def setBackupDestination(self, destination_id, *args):
+    def setBackupDestination(self, destination_id, kwargs):
         """Set Backup Destination
 
             This function allows you to modify the setup and data for a backup destination.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+backup_destination_set
         """
-        return self.__cQuery('backup_destination_set?id='+destination_id)
+        kwargs['id'] = destination_id
+        return self.__cQuery('backup_destination_set', kwargs)
 
     def deleteBackupDestination(self, destination_id):
         """Delete Backup Destination
@@ -413,7 +488,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+backup_destination_delete
         """
-        return self.__cQuery('backup_destination_delete?id='+destination_id)
+        return self.__cQuery('backup_destination_delete', {
+            'id': destination_id
+        })
 
     def getBackupDestinationDetails(self, destination_id):
         """Get Backup Destination Details
@@ -422,7 +499,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+backup_destination_get
         """
-        return self.__cQuery('backup_destination_get?id='+destination_id)
+        return self.__cQuery('backup_destination_get', {
+            'id': destination_id
+        })
 
     def listBackupDestionations(self):
         """List Backup Destinations
@@ -433,14 +512,15 @@ class Cpanel:
         """
         return self.__cQuery('backup_destination_list')
 
-    def addPackage(self, name, *args):
+    def addPackage(self, name, kwargs):
         """Add Hosting Package
 
             This function adds a new hosting package.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+addpkg
         """
-        return self.__cQuery('addpkg?name='+name)
+        kwargs['name'] = name
+        return self.__cQuery('addpkg', kwargs)
 
     def deletePackage(self, name):
         """Delete Hosting Package
@@ -449,16 +529,19 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+killpkg
         """
-        return self.__cQuery('killpkg?pkg='+name)
+        return self.__cQuery('killpkg', {
+            'pkg': name
+        })
 
-    def editPackage(self, name, *args):
+    def editPackage(self, name, kwargs):
         """Edit Hosting Package
 
             This function edits all aspects of a specific hosting package.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+editpkg
         """
-        return self.__cQuery('editpkg?name='+name)
+        kwargs['name'] = name
+        return self.__cQuery('editpkg', kwargs)
 
     def listPackages(self):
         """List Hosting Packages
@@ -485,7 +568,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+restartservice
         """
-        return self.__cQuery('restartservice?service='+service)
+        return self.__cQuery('restartservice', {
+            'service': service
+        })
 
     def getServiceStatus(self, service):
         """Get Service Status
@@ -494,7 +579,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+servicestatus
         """
-        return self.__cQuery('servicestatus?service='+service)
+        return self.__cQuery('servicestatus', {
+            'service': service
+        })
 
     def configureService(self, service, enabled=True, monitored=True):
         """Configure Service
@@ -504,7 +591,11 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+configureservice
         """
-        return self.__cQuery('configureservice?service='+service+'&enabled='+enabled+'&monitored='+monitored)
+        return self.__cQuery('configureservice', {
+            'service': service,
+            'enabled': enabled,
+            'monitored': monitored
+        })
 
     def getSSLDetails(self, domain):
         """Get SSL Details
@@ -513,7 +604,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+fetchsslinfo
         """
-        return self.__cQuery('fetchsslinfo?domain='+domain)
+        return self.__cQuery('fetchsslinfo', {
+            'domain': domain
+        })
 
     def generateSSL(self, xemail, host, country, state, city, co, cod, email, password):
         """Generate SSL Certificate
@@ -522,8 +615,17 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+generatessl
         """
-        return self.__cQuery('generatessl?xemail='+xemail+'&host='+host+'&country='+country+
-                '&state='+state+'&city='+city+'&co='+co+'&cod='+cod+'&email='+email+'&pass='+password)
+        return self.__cQuery('generatessl', {
+            'xemail': xemail,
+            'host': host,
+            'country': country,
+            'state': state,
+            'city': city,
+            'co': co,
+            'cod': cod,
+            'email': email,
+            'pass': password
+        })
 
     def installSSL(self, username, domain, cert, key, cab, ip):
         """Install SSL Certificate
@@ -532,7 +634,14 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+installssl
         """
-        return self.__cQuery('installssl?user='+username+'&domain='+domain+'&cert='+cert+'&key='+key+'&cab='+cab+'&ip='+ip)
+        return self.__cQuery('installssl', {
+            'user': username,
+            'domain': domain,
+            'cert': cert,
+            'key': key,
+            'cab': cab,
+            'ip': ip
+        })
 
     def listSSL(self):
         """List SSL Certificates
@@ -552,7 +661,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+set_primary_servername
         """
-        return self.__cQuery('set_primary_servername?api.version=1&servername='+servername+'&type='+vtype)
+        return self.__cQuery('set_primary_servername', {
+            'servername': servername,
+            'type': vtype
+        })
 
     def checkSNI(self):
         """Check For SNI
@@ -561,7 +673,7 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+is_sni_supported
         """
-        return self.__cQuery('is_sni_supported?api.version=1')
+        return self.__cQuery('is_sni_supported')
 
 
     def installServiceSSL(self, service, crt, key, cabundle):
@@ -572,7 +684,12 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+install_service_ssl_certificate
         """
-        return self.__cQuery('install_service_ssl_certificate?service='+service+'&crt='+crt+'&key='+key+'&cabundle='+cabundle+'&api.version=1')
+        return self.__cQuery('install_service_ssl_certificate', {
+            'service': service,
+            'crt': crt,
+            'key': key,
+            'cabundle': cabundle
+        })
 
     def regenerateServiceSSL(self, service):
         """Regenerate System Service's SSL Certificate
@@ -582,7 +699,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+reset_service_ssl_certificate
         """
-        return self.__cQuery('reset_service_ssl_certificate?api.version=1&service='+service)
+        return self.__cQuery('reset_service_ssl_certificate', {
+            'service': service
+        })
 
     def getServiceSSL(self):
         """Get System Service's SSL Certificate
@@ -601,7 +720,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+unsetupreseller
         """
-        return self.__cQuery('unsetupreseller?user='+username)
+        return self.__cQuery('unsetupreseller', {
+            'user': username
+        })
 
     def promoteReseller(self, username, make_owner=False):
         """Promote Reseller
@@ -610,16 +731,20 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setupreseller
         """
-        return self.__cQuery('setupreseller?user='+username+'&makeowner='+make_owner)
+        return self.__cQuery('setupreseller', {
+            'user': username,
+            'makeowner': make_owner
+        })
 
-    def createResellerACL(self, acllist, *args):
+    def createResellerACL(self, acllist, kwargs):
         """Create Reseller ACL
 
             This function creates a new reseller ACL list.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+saveacllist
         """
-        return self.__cQuery('saveacllist?acllist='+acllist)
+        kwargs['acllist'] = acllist
+        return self.__cQuery('saveacllist', kwargs)
 
     def listResellerACL(self):
         """List Reseller ACL
@@ -646,7 +771,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+resellerstats
         """
-        return self.__cQuery('resellerstats?reseller='+reseller)
+        return self.__cQuery('resellerstats', {
+            'reseller': reseller
+        })
 
     def getResellerIPs(self, username):
         """Get Reseller IP Addresses
@@ -655,16 +782,19 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+getresellerips
         """
-        return self.__cQuery('getresellerips?user='+username)
+        return self.__cQuery('getresellerips', {
+            'user': username
+        })
 
-    def setResellerACL(self, reseller, *args):
+    def setResellerACL(self, reseller, kwargs):
         """Set Reseller ACL
 
             This function specifies the ACL for a reseller, or modifies specific ACL items for a reseller.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setacls
         """
-        return self.__cQuery('setacls?reseller='+reseller)
+        kwargs['reseller'] = reseller
+        return self.__cQuery('setacls', kwargs)
 
     def deleteReseller(self, reseller, terminate_reseller=True):
         """Delete Reseller
@@ -673,35 +803,41 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+terminatereseller
         """
-        verify = '%20all%20the%20accounts%20owned%20by%20the%20reseller%20'+reseller
-        return self.__cQuery('terminatereseller?reseller='+reseller+'&terminatereseller='+terminate_reseller+'&verify='+verify)
+        return self.__cQuery('terminatereseller', {
+            'reseller': reseller,
+            'terminatereseller': terminate_reseller,
+            'verify': '%20all%20the%20accounts%20owned%20by%20the%20reseller%20%s' % reseller
+        })
 
-    def allocateResellerIP(self, username, *args):
+    def allocateResellerIP(self, username, kwargs):
         """Allocate IP Addresses To Reseller
 
             This function will add IP addresses to a reseller account.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setresellerips
         """
-        return self.__cQuery('setresellerips?user='+username)
+        kwargs['user'] = username
+        return self.__cQuery('setresellerips', kwargs)
 
-    def setResellerResourceLimits(self, username, *args):
+    def setResellerResourceLimits(self, username, kwargs):
         """Set Reseller Resource Limits
 
             This function allows you to specify the amount of bandwidth and disk space a reseller is able to use.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setresellerlimits
         """
-        return self.__cQuery('setresellerlimits?user='+username)
+        kwargs['user'] = username
+        return self.__cQuery('setresellerlimits', kwargs)
 
-    def setResellerPackage(self, username, *args):
+    def setResellerPackage(self, username, kwargs):
         """Set Reseller Package
 
             This function allows you to control which packages resellers are able to use.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setresellerpackagelimit
         """
-        return self.__cQuery('setresellerpackagelimit?user='+username)
+        kwargs['user'] = username
+        return self.__cQuery('setresellerpackagelimit', kwargs)
 
     def setResellerMainIP(self, username, ip):
         """Set Reseller Primary IP Address
@@ -710,7 +846,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setresellermainip
         """
-        return self.__cQuery('setresellermainip?user='+username+'&ip='+ip)
+        return self.__cQuery('setresellermainip', {
+            'user': username,
+            'ip': ip
+        })
 
     def suspendReseller(self, username, reason=""):
         """Suspend Reseller
@@ -719,7 +858,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+suspendreseller
         """
-        return self.__cQuery('suspendreseller?user='+username+'&reason='+reason)
+        return self.__cQuery('suspendreseller', {
+            'user': username,
+            'reason': reason
+        })
 
     def unsuspendReseller(self, username):
         """Unsuspend Reseller
@@ -728,7 +870,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+unsuspendreseller
         """
-        return self.__cQuery('unsuspendreseller?user='+username)
+        return self.__cQuery('unsuspendreseller', {
+            'user': username
+        })
 
     def setResellerNameservers(self, username, nameservers=""):
         """Set Reseller Nameserver Records
@@ -737,7 +881,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setresellernameservers
         """
-        return self.__cQuery('setresellernameservers?user='+username+'&nameservers='+nameservers)
+        return self.__cQuery('setresellernameservers', {
+            'user': username,
+            'nameservers': nameservers
+        })
 
     def listResellerAccounts(self, username):
         """List Reseller's Owned Accounts
@@ -747,7 +894,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+acctcounts
         """
-        return self.__cQuery('acctcounts?user='+username)
+        return self.__cQuery('acctcounts', {
+            'user': username
+        })
 
     def getServerHostname(self):
         """Get Server Hostname
@@ -783,7 +932,7 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+systemloadavg
         """
-        return self.__cQuery('systemloadavg?api.version=1')
+        return self.__cQuery('systemloadavg')
 
     def rebootServer(self, force=False):
         """Reboot Server
@@ -792,7 +941,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+reboot
         """
-        return self.__cQuery('reboot?force='+force)
+        return self.__cQuery('reboot', {
+            'force': force
+        })
 
     def addServerIP(self, ips, netmask):
         """Add IP Address to Server
@@ -801,7 +952,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+addips
         """
-        return self.__cQuery('addips?api.version=1&ips='+ips+'&netmask='+netmask)
+        return self.__cQuery('addips', {
+            'ips': ips,
+            'netmask': netmask
+        })
 
     def deleteServerIP(self, ip, *args):
         """Delete IP Address From Server
@@ -810,7 +964,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+delip
         """
-        return self.__cQuery('delip?ip='+ip)
+        return self.__cQuery('delip', {
+            'ip': ip
+        })
 
     def listServerIPs(self):
         """List Server IP Addresses
@@ -828,7 +984,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+sethostname
         """
-        return self.__cQuery('sethostname?hostname='+hostname)
+        return self.__cQuery('sethostname', {
+            'hostname': hostname
+        })
 
     def setServerResolvers(self, nameserver1, nameserver2="", nameserver3=""):
         """Set Server DNS Resolvers
@@ -837,7 +995,11 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+setresolvers
         """
-        return self.__cQuery('setresolvers?nameserver1='+nameserver1+'&nameserver2='+nameserver2+'&nameserver3='+nameserver3)
+        return self.__cQuery('setresolvers', {
+            'nameserver1': nameserver1,
+            'nameserver2': nameserver2,
+            'nameserver3': nameserver3
+        })
 
     def showBandwidthUsage(self, *args):
         """Show Bandwidth Usage
@@ -856,7 +1018,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+nvset
         """
-        return self.__cQuery('nvset?key='+nvkey+'&value='+nvval)
+        return self.__cQuery('nvset', {
+            'key': nvkey,
+            'value': nvval
+        })
 
     def getNvVar(self, nvkey):
         """Get Non-Volatile Variable
@@ -865,7 +1030,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+nvget
         """
-        return self.__cQuery('nvget?key='+nvkey)
+        return self.__cQuery('nvget', {
+            'key': nvkey
+        })
 
     def setServerSupportTier(self, tier="stable"):
         """Set Server Support Tier
@@ -874,7 +1041,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+set_tier
         """
-        return self.__cQuery('set_tier?tier='+tier)
+        return self.__cQuery('set_tier', {
+            'tier': tier
+        })
 
     def getServerSupportTier(self):
         """Get Server Support Tier
@@ -893,7 +1062,7 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+accesshash
         """
-        return self.__cQuery('accesshash?api.version=1')
+        return self.__cQuery('accesshash')
 
     def validateEximConfigSpecified(self, cfg_text, section=""):
         """Validate Specified Exim Configuration
@@ -903,7 +1072,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+validate_exim_configuration_syntax
         """
-        return self.__cQuery('validate_exim_configuration_syntax?cfg_text='+cfg_text)
+        return self.__cQuery('validate_exim_configuration_syntax', {
+            'cfg_text': cfg_text
+        })
 
     def validateEximConfig(self):
         """Validate Exim Configuration
@@ -940,7 +1111,10 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+get_tweaksetting
         """
-        return self.__cQuery('get_tweaksetting?api.version=1&key='+key+'&module='+module)
+        return self.__cQuery('get_tweaksetting', {
+            'key': key,
+            'module': module
+        })
 
     def setTweakSettingsValue(self, key, val, module="Main"):
         """Set WHM Tweak Settings Value
@@ -950,16 +1124,20 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+set_tweaksetting
         """
-        return self.__cQuery('set_tweaksetting?api.version=1&key='+key+'&value='+val+'&module='+module)
+        return self.__cQuery('set_tweaksetting', {
+            'key': key,
+            'value': val,
+            'module': module
+        })
 
-    def getDeliveryRecords(self, *args):
+    def getDeliveryRecords(self, kwargs):
         """Get Mail Delivery Reports
 
             This function retrieves email delivery records.
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+emailtrack_search
         """
-        return self.__cQuery('emailtrack_search?api.version=1')
+        return self.__cQuery('emailtrack_search', kwargs)
 
     def setServerUpdateFrequency(self, updates="manual"):
         """Set Server Update Frequency
@@ -968,7 +1146,9 @@ class Cpanel:
 
                 https://documentation.cpanel.net/display/SDK/WHM+API+1+Functions+-+set_cpanel_updates
         """
-        return self.__cQuery('set_cpanel_updates?updates='+updates)
+        return self.__cQuery('set_cpanel_updates', {
+            'updates': updates
+        })
 
     def getAppConfigApps(self):
         """Get AppConfig Apps
