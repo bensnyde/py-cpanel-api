@@ -9,7 +9,7 @@
     @website    http://bensnyde.me
     @email      benton@bensnyde.me
     @created    7/24/13
-    @updated    5/17/16
+    @updated    9/28/20
 """
 import base64
 import httplib
@@ -20,7 +20,9 @@ import json
 class Cpanel:
     def __init__(self, base_url, username, password):
         self.base_url = base_url
-        self.headers = {'Authorization':'Basic ' + base64.b64encode(username+':'+password).decode('ascii')}
+        self.headers = {
+            'Authorization': 'Basic ' + base64.b64encode(f"{self.username}:{self.password}".encode()).decode('ascii')
+        }
 
     def __cQuery(self, resource, kwargs={}):
         """Query WHM API
@@ -35,17 +37,15 @@ class Cpanel:
             kwargs['api.version'] = 1
 
             conn = httplib.HTTPSConnection(self.base_url, 2087)
-            conn.request('GET', '/json-api/%s?%s' % (resource, urllib.urlencode(kwargs)), headers=self.headers)
+            conn.request('GET', f'/json-api/{resource}?{urllib.urlencode(kwargs)}', headers=self.headers)
+            
             response = conn.getresponse()
             data = json.loads(response.read())
             conn.close()
+            
             return data
-        except httplib.HTTPException as ex:
-            logging.critical("HTTPException from Cpanel API: %s" % ex)
-        except ValueError as ex:
-            logging.critical("Unexpected response from querying Cpanel API: %s" % ex)
-        except Exception as ex:
-            logging.critical("Unhandled Exception while querying Cpanel API: %s" % ex)
+        except:
+            logging.exception(f"Error fetching {resource}")
 
     def createAccount(self, username, domain, kwargs):
         """Create Cpanel Account
